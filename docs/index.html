@@ -8,6 +8,7 @@
       name="description"
       content="Transfer, unggah bukti ke Drive, dan isi formulir konfirmasi untuk Kegiatan Agustusan 2026 Graha Swarna Residence."
     />
+    <meta name="robots" content="noindex, nofollow" />
     <link rel="icon" href="favicon.svg" type="image/svg+xml" />
 
     <meta property="og:title" content="GSR Merdeka 2026" />
@@ -252,6 +253,17 @@
             </article>
           </div>
         </div>
+
+        <div class="shell dash" id="dashboard">
+          <div class="dash-head">
+            <span class="dash-eyebrow">DASHBOARD DONASI WARGA</span>
+            <h3>Siapa saja yang sudah berdonasi</h3>
+            <p>Daftar ini diperbarui otomatis dari formulir konfirmasi — sebagai bukti transparansi untuk seluruh warga.</p>
+          </div>
+          <div class="dash-stats" id="dashStats"></div>
+          <div class="dash-list" id="dashList"></div>
+          <p class="dash-note" id="dashNote">Memuat data…</p>
+        </div>
       </section>
 
       <section class="closing shell">
@@ -311,6 +323,152 @@
             done();
           }
         });
+      })();
+    </script>
+
+    <script>
+      /* ===== Dashboard transparansi donasi =====
+         Sumber data: Google Sheet jawaban formulir konfirmasi,
+         yang dipublikasikan lewat "File > Share > Publish to web > CSV".
+         Tempel URL CSV publikasi itu ke DASHBOARD_CSV_URL di bawah. */
+      const DASHBOARD_CSV_URL = ""; // <-- tempel URL CSV publikasi Google Sheet di sini
+      const SHOW_INDIVIDUAL_NOMINAL = false; // privasi: sembunyikan nominal per orang (total tetap tampil)
+      const REFRESH_MS = 60000;
+
+      (function () {
+        const statsEl = document.getElementById("dashStats");
+        const listEl = document.getElementById("dashList");
+        const noteEl = document.getElementById("dashNote");
+
+        function esc(s) {
+          return String(s == null ? "" : s).replace(/[&<>"']/g, function (c) {
+            return { "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c];
+          });
+        }
+
+        function parseCSV(text) {
+          const rows = [];
+          let row = [], cur = "", q = false;
+          for (let i = 0; i < text.length; i++) {
+            const c = text[i];
+            if (q) {
+              if (c === '"') {
+                if (text[i + 1] === '"') { cur += '"'; i++; } else q = false;
+              } else cur += c;
+            } else if (c === '"') q = true;
+            else if (c === ",") { row.push(cur); cur = ""; }
+            else if (c === "\n") { row.push(cur); rows.push(row); row = []; cur = ""; }
+            else if (c === "\r") { /* skip */ }
+            else cur += c;
+          }
+          if (cur !== "" || row.length) { row.push(cur); rows.push(row); }
+          return rows;
+        }
+
+        function findCol(headers, patterns) {
+          for (let p = 0; p < patterns.length; p++) {
+            for (let i = 0; i < headers.length; i++) {
+              if (patterns[p].test(headers[i])) return i;
+            }
+          }
+          return -1;
+        }
+
+        function toNumber(v) {
+          const n = parseInt(String(v).replace(/[^0-9]/g, ""), 10);
+          return isNaN(n) ? 0 : n;
+        }
+
+        function rupiah(n) {
+          try { return "Rp " + new Intl.NumberFormat("id-ID").format(n); }
+          catch (e) { return "Rp " + n; }
+        }
+
+        function shortDate(v) {
+          const s = String(v || "").trim();
+          const m = s.match(/^(\d{1,2})[\/\-](\d{1,2})[\/\-](\d{2,4})/);
+          if (m) return m[1] + "/" + m[2] + "/" + m[3];
+          return s.split(" ")[0] || s;
+        }
+
+        function placeholder() {
+          statsEl.innerHTML = "";
+          listEl.innerHTML = "";
+          noteEl.innerHTML =
+            "Dashboard akan aktif setelah panitia menyambungkan data formulir. " +
+            "Nama warga & total donasi akan tampil di sini secara otomatis.";
+        }
+
+        function render(rows) {
+          if (!rows.length) { placeholder(); return; }
+          const headers = rows[0].map(function (h) { return h.trim(); });
+          const iNama = findCol(headers, [/nama/i, /warga/i]);
+          const iBlok = findCol(headers, [/blok/i, /rumah/i, /alamat/i, /no\.?\s*rumah/i]);
+          const iNominal = findCol(headers, [/nominal/i, /jumlah/i, /donasi/i, /rupiah/i, /amount/i, /besar/i]);
+          const iTgl = findCol(headers, [/tanggal/i, /waktu/i, /timestamp/i, /stempel/i]);
+
+          const data = rows.slice(1).filter(function (r) {
+            return r.some(function (c) { return c && c.trim() !== ""; });
+          });
+
+          if (!data.length) {
+            statsEl.innerHTML = "";
+            listEl.innerHTML = "";
+            noteEl.textContent = "Belum ada donasi yang masuk. Jadilah yang pertama! 🙌";
+            return;
+          }
+
+          let total = 0;
+          data.forEach(function (r) { if (iNominal >= 0) total += toNumber(r[iNominal]); });
+
+          const lastRow = data[data.length - 1];
+          const lastDate = iTgl >= 0 ? shortDate(lastRow[iTgl]) : "";
+
+          const stats = [];
+          stats.push({ label: "Donatur", value: data.length + " warga" });
+          if (iNominal >= 0 && total > 0) stats.push({ label: "Total terkumpul", value: rupiah(total) });
+          if (lastDate) stats.push({ label: "Terakhir diperbarui", value: lastDate });
+          statsEl.innerHTML = stats.map(function (s) {
+            return '<div class="dash-stat"><span class="dash-stat-value">' + esc(s.value) +
+              '</span><span class="dash-stat-label">' + esc(s.label) + "</span></div>";
+          }).join("");
+
+          const items = data.slice().reverse().map(function (r) {
+            const nama = iNama >= 0 ? r[iNama].trim() : "Warga GSR";
+            const blok = iBlok >= 0 ? r[iBlok].trim() : "";
+            const tgl = iTgl >= 0 ? shortDate(r[iTgl]) : "";
+            const who = esc(nama || "Warga GSR") + (blok ? ' <span class="dash-blok">' + esc(blok) + "</span>" : "");
+            const nominal =
+              SHOW_INDIVIDUAL_NOMINAL && iNominal >= 0
+                ? '<span class="dash-nominal">' + esc(rupiah(toNumber(r[iNominal]))) + "</span>"
+                : "";
+            return (
+              '<div class="dash-item">' +
+              '<span class="dash-name">' + who + "</span>" +
+              (tgl ? '<span class="dash-date">' + esc(tgl) + "</span>" : "") +
+              nominal +
+              '<span class="dash-badge">✓ Terkonfirmasi</span>' +
+              "</div>"
+            );
+          }).join("");
+          listEl.innerHTML = items;
+          noteEl.innerHTML = "🙏 Terima kasih kepada seluruh warga yang telah berdonasi." +
+            (SHOW_INDIVIDUAL_NOMINAL ? "" : " Nominal per orang dirahasiakan demi privasi; total di atas transparan untuk semua.");
+        }
+
+        function load() {
+          if (!DASHBOARD_CSV_URL) { placeholder(); return; }
+          fetch(DASHBOARD_CSV_URL, { cache: "no-store" })
+            .then(function (r) { if (!r.ok) throw new Error(r.status); return r.text(); })
+            .then(function (t) { render(parseCSV(t)); })
+            .catch(function () {
+              noteEl.textContent =
+                "Belum bisa memuat data. Pastikan Google Sheet sudah dipublikasikan (Publish to web → CSV).";
+            });
+        }
+
+        load();
+        if (DASHBOARD_CSV_URL) setInterval(load, REFRESH_MS);
       })();
     </script>
   </body>
