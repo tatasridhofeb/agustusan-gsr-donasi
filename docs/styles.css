@@ -503,6 +503,50 @@ button:focus-visible {
   text-underline-offset: 4px;
 }
 
+.qris-or {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin: 22px 0 16px;
+}
+
+.qris-or::before,
+.qris-or::after {
+  content: "";
+  flex: 1;
+  height: 1px;
+  background: var(--line);
+}
+
+.qris-or span {
+  color: var(--muted);
+  font-size: 10px;
+  font-weight: 950;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+}
+
+.qris-img {
+  display: block;
+  width: min(100%, 232px);
+  margin: 0 auto;
+  border-radius: 12px;
+  border: 1px solid var(--line);
+  background: #fff;
+  box-shadow: 0 10px 24px rgba(28, 46, 34, 0.1);
+}
+
+.qris-save {
+  display: block;
+  margin: 14px 0 0;
+  color: var(--green);
+  font-size: 12px;
+  font-weight: 900;
+  text-align: center;
+  text-decoration: underline;
+  text-underline-offset: 4px;
+}
+
 .card-note {
   margin: auto 0 0;
   padding-top: 22px;
